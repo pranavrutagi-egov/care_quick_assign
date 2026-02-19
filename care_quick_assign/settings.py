@@ -7,7 +7,7 @@ from django.core.signals import setting_changed
 from django.dispatch import receiver
 from rest_framework.settings import perform_import
 
-from care_quick_assign.apps import PLUGIN_NAME
+from care_quick_assign.constants import PLUGIN_NAME
 
 env = environ.Env()
 
@@ -98,11 +98,14 @@ class PluginSettings:  # pragma: no cover
             delattr(self, "_user_settings")
 
 
-REQUIRED_SETTINGS = {}
+REQUIRED_SETTINGS = {
+    "CARE_QUICK_AUTO_ASSIGN_ENABLED"
+}
 
 DEFAULTS = {
     "WINDOW_SIZE_FOR_AUTO_ASSIGNMENT": 7, # in days
     "AUTO_ASSIGNMENT_APPOINTMENT_NOTE": "This appointment was automatically generated using quick auto-assign feature.",
+    "CARE_QUICK_AUTO_ASSIGN_ENABLED": "True"
 }
 
 plugin_settings = PluginSettings(

@@ -1,0 +1,1 @@
+PLUGIN_NAME = "care_quick_assign"
