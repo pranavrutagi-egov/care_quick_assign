@@ -35,11 +35,6 @@ class PluginSettings:  # pragma: no cover
         if not plugin_name:
             raise ValueError("Plugin name must be provided")
 
-        print("Care quick assign settings initialized with:")
-        print("plugin_name", plugin_name)
-        print("defaults", defaults)
-        print("import_strings", import_strings)
-        print("required_settings", required_settings)
         self.plugin_name = plugin_name
         self.defaults = defaults or {}
         self.import_strings = import_strings or set()
@@ -103,12 +98,11 @@ class PluginSettings:  # pragma: no cover
             delattr(self, "_user_settings")
 
 
-REQUIRED_SETTINGS = {
-    "CARE_QUICK_ASSIGN_CONFIG",
-}
+REQUIRED_SETTINGS = {}
 
 DEFAULTS = {
-    "CARE_QUICK_ASSIGN_OPTIONAL_CONFIG": "test",
+    "WINDOW_SIZE_FOR_AUTO_ASSIGNMENT": 7, # in days
+    "AUTO_ASSIGNMENT_APPOINTMENT_NOTE": "This appointment was automatically generated using quick auto-assign feature.",
 }
 
 plugin_settings = PluginSettings(
