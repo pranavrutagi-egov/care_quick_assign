@@ -11,4 +11,4 @@ class CareQuickAssignConfig(AppConfig):
     verbose_name = _("Care quick assign")
 
     def ready(self):
-        import care_quick_assign.signals  # noqa F401
+        import care_quick_assign.signals.signals  # noqa F401
