@@ -16,9 +16,6 @@ def hook_patient_created(sender, instance, created, **kwargs):
     if not created:
         return
 
-    logger.info("Quick Auto Assignment: Signal received for patient creation")
-    logger.info("Proceeding with quick auto assignment for patient")
-
     transaction.on_commit(
         lambda: create_quick_assignment.delay(instance.external_id)
     )

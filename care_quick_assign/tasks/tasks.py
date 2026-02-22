@@ -1,22 +1,17 @@
 import logging
+from datetime import datetime, time, timedelta
 
 from celery import shared_task
 
-from django.utils import timezone
-from care_quick_assign.settings import plugin_settings
-
-from care.emr.models.scheduling.schedule import SchedulableResource
-from care.emr.models.patient import Patient
-from care.emr.resources.scheduling.schedule.spec import SchedulableResourceTypeOptions
-from care.facility.models.facility import Facility
-
-from datetime import datetime, time, timedelta
-
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import F
 from django.utils import timezone
-from django.core.exceptions import ValidationError
+
+from care_quick_assign.settings import plugin_settings
+
+from care_quick_assign.models.assignment_status import AutoAssignmentEvent
 
 from care.emr.api.viewsets.scheduling import lock_create_appointment
 
@@ -45,42 +40,43 @@ logger = logging.getLogger(__name__)
 
 @shared_task
 def create_quick_assignment(patient_external_id):
-    logger.info("Task for creating quick assignment triggered.")
-    logger.info(f"Received patient data: {patient_external_id}")
-
     patient = Patient.objects.filter(external_id=patient_external_id).first()
 
     if not patient:
         logger.warning("Patient with external_id %s not found.", patient_external_id)
         return
 
-    logger.info("Patient found")
+    assignment_event_log, _ = AutoAssignmentEvent.objects.get_or_create(patient=patient)
 
-    facility = Facility.objects.filter(geo_organization=patient.geo_organization).first()
+    try:
+        facility = Facility.objects.filter(geo_organization=patient.geo_organization).first()
 
-    if not facility:
-        logger.warning("No facility found for patient's geo_organization")
-        return
+        if not facility:
+            assignment_event_log.log_failure("No facility found for patient assignment")
+            return
 
-    logger.info("Facility found for patient's geo_organization")
+        first_best_slot = get_first_best_slot_handler(facility)
 
-    first_best_slot = get_first_best_slot_handler(facility)
+        if not first_best_slot:
+            window_size = plugin_settings.CARE_WINDOW_SIZE_FOR_AUTO_ASSIGNMENT
+            assignment_event_log.log_failure(
+                f"No suitable slot found within {window_size} day{'s' if window_size != 1 else ''} for quick assignment"
+            )
+            return
 
-    if not first_best_slot:
-        logger.warning("No suitable slot found for quick assignment.")
-        return
+        appointment = create_appointment_handler(
+            slot=first_best_slot,
+            patient=patient,
+            user=patient.created_by
+        )
 
-    logger.info("Suitable slot found for quick assignment")
-
-    appointment = create_appointment_handler(
-        slot=first_best_slot,
-        patient=patient,
-        user=patient.created_by
-    )
-
-    logger.info(f"Appointment created successfully: {appointment.id}")
+        assigned_staff = appointment.token_slot.resource.user
+        assignment_event_log.log_success(assigned_staff=assigned_staff)
 
 
+    except Exception as e:
+        assignment_event_log.log_failure(str(e))
+        retry_quick_assignment(patient_external_id)
 
 
 
@@ -91,14 +87,12 @@ def get_first_best_slot_handler(facility):
     )
 
     if not schedulable_resources.exists():
-        logger.warning("No schedulable resources found for the given facility.")
-        return None
+        raise Exception("No schedulable resources found for the given facility")
 
-    window_size = plugin_settings.WINDOW_SIZE_FOR_AUTO_ASSIGNMENT
+    window_size = plugin_settings.CARE_WINDOW_SIZE_FOR_AUTO_ASSIGNMENT
 
     if not window_size or window_size < 1:
-        logger.error("Invalid window size for auto-assignment.")
-        raise ValueError("Invalid window size for auto-assignment")
+        raise ValidationError("Invalid window size for auto-assignment")
 
     current_timestamp = timezone.now()
     start_date = current_timestamp.date()
@@ -112,8 +106,7 @@ def get_first_best_slot_handler(facility):
     )
 
     if not availabilities:
-        logger.warning("No availabilities found for the given schedulable resources.")
-        return None
+        raise Exception("No availabilities found for the given resources")
 
     exceptions = AvailabilityException.objects.filter(
         resource__in=schedulable_resources,
@@ -145,8 +138,7 @@ def get_first_best_slot_handler(facility):
             logger.info(f"Slots found for day {day}")
             return slots_for_current_day.first()
 
-    logger.info("No slots found within the specified window.")
-    return None
+    raise Exception(f"No suitable slot found within {window_size} day{'s' if window_size != 1 else ''} for quick assignment")
 
 
 
@@ -243,7 +235,6 @@ def convert_availability_and_exceptions_to_slots(availabilities, exceptions, day
         while current_time < end_time:
             i += 1
             if i == settings.MAX_SLOTS_PER_AVAILABILITY + 1:
-                # Failsafe to prevent infinite loop
                 break
 
             conflicting = False
@@ -294,7 +285,36 @@ def create_appointment_handler(slot, patient, user):
         if not patient:
             raise ValidationError("Patient not found")
 
-        note = plugin_settings.AUTO_ASSIGNMENT_APPOINTMENT_NOTE
+        note = plugin_settings.CARE_AUTO_ASSIGNMENT_APPOINTMENT_NOTE
         appointment = lock_create_appointment(slot, patient, user, note)
 
         return appointment
+
+
+
+def retry_quick_assignment(patient_external_id):
+    try:
+        assignment_event_log = AutoAssignmentEvent.objects.get(
+            patient__external_id=patient_external_id
+        )
+
+        if assignment_event_log.retry_count >= plugin_settings.CARE_QUICK_AUTO_ASSIGN_MAX_RETRIES:
+            logger.warning(
+                "Max retry attempts reached for patient %s. Current retry count: %d",
+                patient_external_id,
+                assignment_event_log.retry_count
+            )
+            return
+
+        assignment_event_log.retry_count += 1
+        assignment_event_log.save()
+
+        transaction.on_commit(
+            lambda: create_quick_assignment.delay(patient_external_id)
+        )
+
+
+    except AutoAssignmentEvent.DoesNotExist:
+        logger.warning("No assignment event log found for patient with external_id %s.", patient_external_id)
+    except Exception as e:
+        logger.error("Error while retrying quick assignment for patient with external_id %s: %s", patient_external_id, str(e))

@@ -16,5 +16,4 @@ class CareQuickAssignConfig(AppConfig):
 
     def ready(self):
         if settings.CARE_QUICK_AUTO_ASSIGN_ENABLED == "True":
-            logger.info(f"{PLUGIN_NAME} is enabled.")
             import care_quick_assign.signals.signals  # noqa F401
