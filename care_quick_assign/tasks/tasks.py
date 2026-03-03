@@ -11,7 +11,7 @@ from django.utils import timezone
 
 from care_quick_assign.settings import plugin_settings
 
-from care_quick_assign.models.assignment_status import AutoAssignmentEvent
+from care_quick_assign.models.auto_assignment_event import AutoAssignmentEvent
 
 from care.emr.api.viewsets.scheduling import lock_create_appointment
 
@@ -305,9 +305,8 @@ def retry_quick_assignment(patient_external_id):
                 assignment_event_log.retry_count
             )
             return
-
-        assignment_event_log.retry_count += 1
-        assignment_event_log.save()
+        
+        assignment_event_log.reinitialize_for_retry()
 
         transaction.on_commit(
             lambda: create_quick_assignment.delay(patient_external_id)
