@@ -45,7 +45,7 @@ class AssignmentViewSet(GenericViewSet):
 
             assignment_event_log.reinitialize_for_retry()
 
-            create_quick_assignment.delay(patient_external_id=patient_id, is_manual_retry=True)
+            create_quick_assignment.delay(patient_external_id=patient_id)
 
             return Response({"message": "Auto-assignment retry initiated successfully."})
 

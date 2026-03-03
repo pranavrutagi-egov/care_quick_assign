@@ -105,7 +105,6 @@ REQUIRED_SETTINGS = {
 DEFAULTS = {
     "CARE_WINDOW_SIZE_FOR_AUTO_ASSIGNMENT": 7, # in days
     "CARE_AUTO_ASSIGNMENT_APPOINTMENT_NOTE": "This appointment was automatically generated using quick auto-assign feature.",
-    "CARE_MANUAL_ASSIGNMENT_APPOINTMENT_NOTE": "This appointment was created manually by the user.",
     "CARE_QUICK_AUTO_ASSIGN_ENABLED": "True",
     "CARE_QUICK_AUTO_ASSIGN_MAX_RETRIES": 0,
 }
