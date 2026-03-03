@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 
 @shared_task
-def create_quick_assignment(patient_external_id):
+def create_quick_assignment(patient_external_id, is_manual_retry=False):
     patient = Patient.objects.filter(external_id=patient_external_id).first()
 
     if not patient:
@@ -67,7 +67,8 @@ def create_quick_assignment(patient_external_id):
         appointment = create_appointment_handler(
             slot=first_best_slot,
             patient=patient,
-            user=patient.created_by
+            user=patient.created_by,
+            is_manual_retry=is_manual_retry
         )
 
         assigned_staff = appointment.token_slot.resource.user
@@ -268,7 +269,7 @@ def convert_availability_and_exceptions_to_slots(availabilities, exceptions, day
 
 
 
-def create_appointment_handler(slot, patient, user):
+def create_appointment_handler(slot, patient, user, is_manual_retry=False):
     with transaction.atomic():
         if (
             TokenBooking.objects.filter(
@@ -285,7 +286,7 @@ def create_appointment_handler(slot, patient, user):
         if not patient:
             raise ValidationError("Patient not found")
 
-        note = plugin_settings.CARE_AUTO_ASSIGNMENT_APPOINTMENT_NOTE
+        note = plugin_settings.CARE_MANUAL_ASSIGNMENT_APPOINTMENT_NOTE if is_manual_retry else plugin_settings.CARE_AUTO_ASSIGNMENT_APPOINTMENT_NOTE
         appointment = lock_create_appointment(slot, patient, user, note)
 
         return appointment
@@ -305,7 +306,7 @@ def retry_quick_assignment(patient_external_id):
                 assignment_event_log.retry_count
             )
             return
-        
+
         assignment_event_log.reinitialize_for_retry()
 
         transaction.on_commit(
