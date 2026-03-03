@@ -4,13 +4,13 @@ from rest_framework.serializers import ModelSerializer
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+
 from care.utils.shortcuts import get_object_or_404
 from care.emr.models.patient import Patient
 
+from care_quick_assign.settings import plugin_settings
 from care_quick_assign.models.auto_assignment_event import AutoAssignmentEvent, AutoAssignmentEventStatus
-
 from care_quick_assign.tasks import create_quick_assignment
-
 
 
 class FailedAssignmentSerializer(ModelSerializer):
@@ -32,13 +32,17 @@ class AssignmentViewSet(GenericViewSet):
 
 
 
-    @action(detail=False, methods=["post"], url_path=r"(?P<patient_id>[^/.]+)/retry")
+    @action(detail=False, methods=["post"], url_path=r"unassigned/(?P<patient_id>[^/.]+)/retry")
     def retry(self, request, *args, **kwargs):
 
         patient_id = kwargs.get("patient_id")
-        assignment_event_log = get_object_or_404(AutoAssignmentEvent, patient__external_id=patient_id)
 
         try:
+            assignment_event_log = get_object_or_404(AutoAssignmentEvent, patient__external_id=patient_id)
+
+            if assignment_event_log.retry_count >= plugin_settings.CARE_QUICK_AUTO_ASSIGN_MAX_RETRIES:
+                return Response({"error": "Max retry attempts reached for this patient."}, status=400)
+
             assignment_event_log.reinitialize_for_retry()
 
             create_quick_assignment.delay(patient_external_id=patient_id, is_manual_retry=True)
