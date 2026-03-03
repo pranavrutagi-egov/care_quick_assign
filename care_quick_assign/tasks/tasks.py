@@ -77,7 +77,6 @@ def create_quick_assignment(patient_external_id, is_manual_retry=False):
 
     except Exception as e:
         assignment_event_log.log_failure(str(e))
-        retry_quick_assignment(patient_external_id)
 
 
 
@@ -290,31 +289,3 @@ def create_appointment_handler(slot, patient, user, is_manual_retry=False):
         appointment = lock_create_appointment(slot, patient, user, note)
 
         return appointment
-
-
-
-def retry_quick_assignment(patient_external_id):
-    try:
-        assignment_event_log = AutoAssignmentEvent.objects.get(
-            patient__external_id=patient_external_id
-        )
-
-        if assignment_event_log.retry_count >= plugin_settings.CARE_QUICK_AUTO_ASSIGN_MAX_RETRIES:
-            logger.warning(
-                "Max retry attempts reached for patient %s. Current retry count: %d",
-                patient_external_id,
-                assignment_event_log.retry_count
-            )
-            return
-
-        assignment_event_log.reinitialize_for_retry()
-
-        transaction.on_commit(
-            lambda: create_quick_assignment.delay(patient_external_id)
-        )
-
-
-    except AutoAssignmentEvent.DoesNotExist:
-        logger.warning("No assignment event log found for patient with external_id %s.", patient_external_id)
-    except Exception as e:
-        logger.error("Error while retrying quick assignment for patient with external_id %s: %s", patient_external_id, str(e))
