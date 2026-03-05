@@ -1,12 +1,11 @@
+from rest_framework.exceptions import ValidationError
+
 from django.db import models
-from django.db.models import CheckConstraint, Q, UniqueConstraint
 
 from care.utils.models.base import BaseModel
+from care.utils.time_util import care_now
 from care.emr.models.patient import Patient
 from care.users.models import User
-
-from care.utils.time_util import care_now
-
 
 
 class AutoAssignmentEventStatus(models.TextChoices):
@@ -37,23 +36,27 @@ class AutoAssignmentEvent(BaseModel):
     triggered_at = models.DateTimeField(default=care_now)
     completed_at = models.DateTimeField(null=True, blank=True)
 
+    def __str__(self):
+        return f"Auto-Assignment Status for patient {self.patient_id} - {self.status}"
+
+
     class Meta:
         constraints = [
-            CheckConstraint(
+            models.CheckConstraint(
                 condition=(
-                    Q(
+                    models.Q(
                         status=AutoAssignmentEventStatus.PENDING,
                         failure_reason__isnull=True,
                         assigned_staff__isnull=True,
                         completed_at__isnull=True
                     ) |
-                    Q(
+                    models.Q(
                         status=AutoAssignmentEventStatus.FAILED,
                         failure_reason__isnull=False,
                         assigned_staff__isnull=True,
                         completed_at__isnull=False
                     ) |
-                    Q(
+                    models.Q(
                         status=AutoAssignmentEventStatus.SUCCESS,
                         assigned_staff__isnull=False,
                         failure_reason__isnull=True,
@@ -62,7 +65,7 @@ class AutoAssignmentEvent(BaseModel):
                 ),
                 name="valid_status_consistency"
             ),
-            UniqueConstraint(fields=["patient"], name="unique_auto_assignment_per_patient")
+            models.UniqueConstraint(fields=["patient"], name="unique_auto_assignment_per_patient")
         ]
         indexes = [
             models.Index(fields=["status"]),
@@ -71,17 +74,20 @@ class AutoAssignmentEvent(BaseModel):
 
 
     def _finalize_assignment_log(self, status, reason=None, assigned_staff=None):
+        if self.status != AutoAssignmentEventStatus.PENDING:
+            raise ValidationError(f"Cannot finalize an event that is {status}.")
         self.status = status
         now = care_now()
         self.failure_reason = reason
         self.assigned_staff = assigned_staff
-
         self.execution_time_ms = int((now - self.triggered_at).total_seconds() * 1000)
         self.completed_at = now
         self.save()
 
 
     def reinitialize_for_retry(self):
+        if self.status != AutoAssignmentEventStatus.FAILED:
+            raise ValidationError(f"Cannot retry an event that is not failed. Current status: {self.status}.")
         self.status = AutoAssignmentEventStatus.PENDING
         self.failure_reason = None
         self.assigned_staff = None
