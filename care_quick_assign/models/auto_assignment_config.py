@@ -13,7 +13,8 @@ class AutoAssignmentConfig(BaseModel):
     workload_weight = models.PositiveIntegerField(default=1)
     acuity_weight = models.PositiveIntegerField(default=1)
     location_weight = models.PositiveIntegerField(default=1)
-    retry_attempts = models.PositiveIntegerField(default=0)
+    retry_attempts = models.PositiveIntegerField(default=1)
+    window_size = models.PositiveIntegerField(default=1)
 
     def __str__(self):
         state = "enabled" if self.enabled else "disabled"

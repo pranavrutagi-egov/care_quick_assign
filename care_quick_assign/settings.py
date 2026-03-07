@@ -98,16 +98,9 @@ class PluginSettings:  # pragma: no cover
             delattr(self, "_user_settings")
 
 
-REQUIRED_SETTINGS = {
-    "CARE_QUICK_AUTO_ASSIGN_ENABLED"
-}
+REQUIRED_SETTINGS = {}
 
-DEFAULTS = {
-    "CARE_WINDOW_SIZE_FOR_AUTO_ASSIGNMENT": 7, # in days
-    "CARE_AUTO_ASSIGNMENT_APPOINTMENT_NOTE": "This appointment was automatically generated using quick auto-assign feature.",
-    "CARE_QUICK_AUTO_ASSIGN_ENABLED": "True",
-    "CARE_QUICK_AUTO_ASSIGN_MAX_RETRIES": 0,
-}
+DEFAULTS = {}
 
 plugin_settings = PluginSettings(
     PLUGIN_NAME, defaults=DEFAULTS, required_settings=REQUIRED_SETTINGS

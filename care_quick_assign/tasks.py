@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 
 @shared_task
-def create_quick_assignment(patient_external_id):
+def create_quick_assignment(patient_external_id, assignment_config):
     patient = Patient.objects.filter(external_id=patient_external_id).first()
 
     if not patient:
@@ -55,12 +55,15 @@ def create_quick_assignment(patient_external_id):
             assignment_event_log.log_failure("No facility found for patient assignment")
             return
 
-        first_best_slot = get_first_best_slot_handler(facility)
+        first_best_slot = get_first_best_slot_handler(
+            facility = facility,
+            window_size = assignment_config["window_size"]
+        )
 
         if not first_best_slot:
-            window_size = plugin_settings.CARE_WINDOW_SIZE_FOR_AUTO_ASSIGNMENT
+            day_count = f"{assignment_config["window_size"]} day{'s' if assignment_config["window_size"] != 1 else ''}"
             assignment_event_log.log_failure(
-                f"No suitable slot found within {window_size} day{'s' if window_size != 1 else ''} for quick assignment"
+                f"No suitable slot found within {day_count} for quick assignment"
             )
             return
 
@@ -79,16 +82,14 @@ def create_quick_assignment(patient_external_id):
 
 
 
-def get_first_best_slot_handler(facility):
+def get_first_best_slot_handler(facility, window_size):
     schedulable_resources = SchedulableResource.objects.filter(
         facility=facility,
         resource_type=SchedulableResourceTypeOptions.practitioner.value,
     )
 
     if not schedulable_resources.exists():
-        raise Exception("No schedulable resources found for the given facility")
-
-    window_size = plugin_settings.CARE_WINDOW_SIZE_FOR_AUTO_ASSIGNMENT
+        raise Exception("No practitioners found in the facilities")
 
     if not window_size or window_size < 1:
         raise ValidationError("Invalid window size for auto-assignment")
@@ -105,7 +106,7 @@ def get_first_best_slot_handler(facility):
     )
 
     if not availabilities:
-        raise Exception("No availabilities found for the given resources")
+        raise Exception(f"No availabilities found for the practitioners within the facilities")
 
     exceptions = AvailabilityException.objects.filter(
         resource__in=schedulable_resources,
@@ -284,7 +285,7 @@ def create_appointment_handler(slot, patient, user):
         if not patient:
             raise ValidationError("Patient not found")
 
-        note = plugin_settings.CARE_AUTO_ASSIGNMENT_APPOINTMENT_NOTE
+        note = "This appointment was automatically generated using quick auto-assign feature."
         appointment = lock_create_appointment(slot, patient, user, note)
 
         return appointment
