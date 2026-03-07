@@ -2,12 +2,15 @@ from rest_framework.viewsets import GenericViewSet
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework import status
 
+from django.forms.models import model_to_dict
 
 from care.utils.shortcuts import get_object_or_404
 
 from care_quick_assign.settings import plugin_settings
 from care_quick_assign.models.auto_assignment_event import AutoAssignmentEvent, AutoAssignmentEventStatus
+from care_quick_assign.models.auto_assignment_config import AutoAssignmentConfig
 from care_quick_assign.api.serializers import AssignmentEventSerializer
 from care_quick_assign.tasks import create_quick_assignment
 
@@ -32,9 +35,17 @@ class AssignmentViewSet(GenericViewSet):
         patient_id = kwargs.get("patient_id")
         assignment_event_log = get_object_or_404(AutoAssignmentEvent, patient__external_id=patient_id)
 
-        if assignment_event_log.retry_count >= plugin_settings.CARE_QUICK_AUTO_ASSIGN_MAX_RETRIES:
-            return Response({"error": "Max retry attempts reached for this patient."}, status=400)
+        auto_assignment_config = AutoAssignmentConfig.objects.first()
+
+        if not auto_assignment_config:
+            raise ValueError({ "error": "Quick assign feature not configured" }, status=status.HTTP_404_NOT_FOUND)
+
+        config_snapshot = model_to_dict(auto_assignment_config, exclude=["enabled"])
+
+        if assignment_event_log.retry_count >= config_snapshot["retry_attempts"]:
+            return Response({"error": "Max retry attempts reached for this patient."}, status=status.HTTP_400_BAD_REQUEST)
+
 
         assignment_event_log.reinitialize_for_retry()
-        create_quick_assignment.delay(patient_external_id=patient_id)
+        create_quick_assignment.delay(patient_external_id=patient_id, assignment_config=config_snapshot)
         return Response({"message": "Auto-assignment retry initiated successfully."})

@@ -25,4 +25,5 @@ class AutoAssignmentConfigSerializer(serializers.ModelSerializer):
             "acuity_weight",
             "location_weight",
             "retry_attempts",
+            "window_size"
         ]
