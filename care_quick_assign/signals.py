@@ -21,11 +21,11 @@ def hook_patient_created(sender, instance, created, **kwargs):
     auto_assignment_config = AutoAssignmentConfig.objects.first()
 
     if not auto_assignment_config:
-        logger.info("Auto-assignment config is missing")
+        logger.info("Quick-assignment feature is not configured")
         return
 
     if not auto_assignment_config.enabled:
-        logger.info("Quick auto-assignment feature is disabled")
+        logger.info("Quick-assignment feature is disabled")
         return
 
     config_snapshot = model_to_dict(auto_assignment_config, exclude=["enabled"])
